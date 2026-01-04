@@ -1,4 +1,4 @@
-module github.com/dulli/caddy-wol
+module github.com/ZacCat/caddy-wol
 
 go 1.25
 
