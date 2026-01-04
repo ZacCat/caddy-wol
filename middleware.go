@@ -25,6 +25,9 @@ type Middleware struct {
 	// Broadcast address (<ip>:<port>) the magic packet should be sent to.
 	// Defaults to "255.255.255.255:9".
 	BroadcastAddress string `json:"broadcast_address,omitempty"`
+	// Timeout for the magic packet to be sent.
+	// Defaults to 10 minutes.
+	Timeout caddy.Duration `json:"timeout,omitempty"`
 
 	key             string
 	logger          *zap.Logger
@@ -60,6 +63,7 @@ func (m *Middleware) Provision(ctx caddy.Context) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -84,7 +88,7 @@ func (m Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddy
 		if err != nil {
 			return err
 		}
-		time.AfterFunc(10*time.Minute, func() {
+		time.AfterFunc(time.Duration(m.Timeout), func() {
 			_, _ = m.pool.Delete(m.key)
 		})
 	}
@@ -93,14 +97,21 @@ func (m Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddy
 
 // UnmarshalCaddyfile implements caddyfile.Unmarshaler.
 func (m *Middleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
+	defaultTimeout := caddy.Duration(10 * time.Minute)
 	for d.Next() {
 		args := d.RemainingArgs()
 
 		switch len(args) {
 		case 1:
-			m.MAC, m.BroadcastAddress = args[0], "255.255.255.255:9"
+			m.MAC, m.BroadcastAddress, m.Timeout = args[0], "255.255.255.255:9", defaultTimeout
 		case 2:
-			m.MAC, m.BroadcastAddress = args[0], args[1]
+			m.MAC, m.BroadcastAddress, m.Timeout = args[0], args[1], defaultTimeout
+		case 3:
+			duration, err := caddy.ParseDuration(args[2])
+			if err != nil {
+				return d.Errf("invalid timeout duration '%s': %v", args[2], err)
+			}
+			m.MAC, m.BroadcastAddress, m.Timeout = args[0], args[1], caddy.Duration(duration)
 		default:
 			return d.Err("unexpected number of arguments")
 		}
